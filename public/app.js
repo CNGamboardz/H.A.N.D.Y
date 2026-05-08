@@ -12,18 +12,46 @@ let vocesDisponibles = [];
 
 document.addEventListener('DOMContentLoaded', () => {
 
-    // 1. Simulamos que el Arduino se conecta exitosamente
-    setTimeout(() => {
-        const statusIndicator = document.getElementById('status-indicator');
-        const statusText = document.getElementById('status-text');
+    // =========================================================================
+    // CONEXIÓN CON ARDUINO VÍA WEB SERIAL API
+    // =========================================================================
+    const btnConectar = document.getElementById('btn-conectar');
+    
+    if (btnConectar) {
+        // Verificamos si el navegador soporta Web Serial API
+        if ('serial' in navigator) {
+            btnConectar.addEventListener('click', async () => {
+                try {
+                    // Solicita al usuario seleccionar el puerto USB del Arduino
+                    const port = await navigator.serial.requestPort();
+                    
+                    // Abre el puerto a 9600 baudios (igual que el Serial.begin de tu código)
+                    await port.open({ baudRate: 9600 });
+                    
+                    // Actualiza UI para mostrar conexión exitosa
+                    const statusIndicator = document.getElementById('status-indicator');
+                    const statusText = document.getElementById('status-text');
+                    if(statusIndicator && statusText) {
+                        statusIndicator.classList.remove('waiting');
+                        statusIndicator.classList.add('connected');
+                        statusText.textContent = "¡Conectado al Guante H.A.N.D.Y.!";
+                        statusText.style.color = "#2ecc71";
+                    }
+                    btnConectar.style.display = 'none'; // Oculta el botón
 
-        if (statusIndicator && statusText) {
-            statusIndicator.classList.remove('waiting');
-            statusIndicator.classList.add('connected');
-            statusText.textContent = "Conectado al Arduino (Modo Prueba Teclado)";
-            statusText.style.color = "#2ecc71"; // Cambiamos el texto a verde
+                    // Inicia el bucle para leer los datos enviados desde Arduino
+                    leerDatosSerial(port);
+                    
+                } catch (error) {
+                    console.error("Error al conectar el puerto serial:", error);
+                    alert("No se pudo conectar al Arduino. Asegúrate de seleccionarlo en la lista desplegable y dar permisos.");
+                }
+            });
+        } else {
+            alert("Tu navegador no soporta la conexión directa con Arduino (Web Serial API). Por favor, usa Google Chrome o Microsoft Edge en tu computadora.");
+            btnConectar.style.display = 'none';
         }
-    }, 1000);
+    }
 
     // =========================================================================
     // EVENTO DE TECLADO PARA SIMULAR EL ARDUINO
@@ -173,7 +201,64 @@ function procesarDatoArduino(letra) {
     renderizarSecuenciaImagenes();
 }
 
-// Función para actualizar el contenedor de imágenes que forma la palabra
+// =========================================================================
+// FUNCIÓN PARA LEER DATOS DEL ARDUINO EN TIEMPO REAL
+// =========================================================================
+async function leerDatosSerial(port) {
+    const textDecoder = new TextDecoderStream();
+    const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
+    const reader = textDecoder.readable.getReader();
+
+    let bufferString = "";
+
+    try {
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            
+            bufferString += value;
+            
+            // Separamos por saltos de línea (ya que el Arduino usa Serial.println)
+            let lines = bufferString.split('\n');
+            
+            // El último elemento puede estar incompleto, lo dejamos en el buffer
+            bufferString = lines.pop();
+
+            for (let line of lines) {
+                line = line.trim();
+                
+                // Buscamos específicamente el texto ">>> LETRA: " que imprime tu Arduino
+                if (line.startsWith(">>> LETRA: ")) {
+                    // Extraemos solo la letra
+                    let letraReal = line.replace(">>> LETRA: ", "").trim();
+                    
+                    // Nos aseguramos de que sea válida y no sea "-"
+                    if (letraReal.length > 0 && letraReal !== "-") {
+                        // Enviamos la letra detectada a la misma función que actualiza la pantalla
+                        procesarDatoArduino(letraReal);
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        console.error("Error leyendo datos del Arduino:", error);
+        
+        const statusIndicator = document.getElementById('status-indicator');
+        const statusText = document.getElementById('status-text');
+        if(statusIndicator && statusText) {
+            statusIndicator.classList.remove('connected');
+            statusIndicator.classList.add('waiting');
+            statusText.textContent = "Desconectado. Error de lectura.";
+            statusText.style.color = "#e74c3c";
+        }
+    } finally {
+        reader.releaseLock();
+    }
+}
+
+// =========================================================================
+// FUNCIÓN PARA ACTUALIZAR EL CONTENEDOR DE IMÁGENES
+// =========================================================================
 function renderizarSecuenciaImagenes() {
     const contenedor = document.getElementById('secuencia-imagenes');
     if (!contenedor) return;

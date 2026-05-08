@@ -1,0 +1,708 @@
+#include <Wire.h>
+#include <MPU6050.h>
+#include <math.h>
+
+MPU6050 mpu;
+
+// ─────────────────────────────────────
+// Pines Flex
+// ─────────────────────────────────────
+#define FLEX_PULGAR  A0
+#define FLEX_INDICE  A1
+#define FLEX_MEDIO   A2
+#define FLEX_ANULAR  A3
+#define FLEX_MENIQUE A4
+
+#define N_MUESTRAS 5
+
+// ─────────────────────────────────────
+// Calibración
+// ─────────────────────────────────────
+int calibAbierto[5]  = {831, 803, 796, 782, 629};
+int calibCerrado[5]  = {927, 894, 915, 898, 960};
+int thresholdFlex[5] = {879, 848, 855, 840, 794};
+
+int margen = 6;
+
+// ─────────────────────────────────────
+// MPU Base
+// ─────────────────────────────────────
+float basePitch = 0;
+float baseRoll  = 0;
+
+// ─────────────────────────────────────
+// Estado
+// ─────────────────────────────────────
+int dedos[5] = {0,0,0,0,0};
+
+String ultimaLetra = "";
+int contadorEstable = 0;
+
+const int ESTABILIDAD_REQUERIDA = 3;
+
+// ─────────────────────────────────────
+// Leer promedio flex
+// ─────────────────────────────────────
+int leerPromedio(int pin){
+
+  long suma = 0;
+
+  for(int i=0;i<N_MUESTRAS;i++){
+    suma += analogRead(pin);
+    delay(3);
+  }
+
+  return suma / N_MUESTRAS;
+}
+
+// ─────────────────────────────────────
+// Calcular Pitch y Roll
+// ─────────────────────────────────────
+void calcAngulos(
+  int16_t ax,
+  int16_t ay,
+  int16_t az,
+  float &pitch,
+  float &roll
+){
+
+  float axf = ax / 16384.0;
+  float ayf = ay / 16384.0;
+  float azf = az / 16384.0;
+
+  pitch = atan2(
+            ayf,
+            sqrt(axf * axf + azf * azf)
+          ) * 180.0 / PI;
+
+  roll = atan2(
+           -axf,
+           azf
+         ) * 180.0 / PI;
+}
+
+// ─────────────────────────────────────
+// Clasificación 0 y 1
+// ─────────────────────────────────────
+void clasificarDedos(int flex[]){
+
+  for(int i=0;i<5;i++){
+
+    int margenActual = margen;
+
+    // Meñique más sensible
+    if(i == 4){
+      margenActual = 0;
+    }
+
+    if(calibCerrado[i] > calibAbierto[i]){
+
+      if(flex[i] > thresholdFlex[i] + margenActual){
+        dedos[i] = 1;
+      }
+      else if(flex[i] < thresholdFlex[i] - margenActual){
+        dedos[i] = 0;
+      }
+
+    }else{
+
+      if(flex[i] < thresholdFlex[i] - margenActual){
+        dedos[i] = 1;
+      }
+      else if(flex[i] > thresholdFlex[i] + margenActual){
+        dedos[i] = 0;
+      }
+    }
+  }
+}
+
+// ─────────────────────────────────────
+// Estado neutral
+// ─────────────────────────────────────
+bool esNeutral(int flex[]){
+
+  for(int i=0;i<5;i++){
+
+    if(abs(flex[i] - calibAbierto[i]) > 25){
+      return false;
+    }
+  }
+
+  return true;
+}
+
+// ─────────────────────────────────────
+// LETRA A
+// ─────────────────────────────────────
+String detectarA(){
+
+  if(
+    dedos[0] == 0 &&
+    dedos[1] == 1 &&
+    dedos[2] == 1 &&
+    dedos[3] == 1 &&
+    dedos[4] == 1
+  ){
+    return "A";
+  }
+
+  return "-";
+}
+
+// ─────────────────────────────────────
+// LETRA B
+// ─────────────────────────────────────
+String detectarB(){
+
+  if(
+    dedos[0] == 1 &&
+    dedos[1] == 0 &&
+    dedos[2] == 0 &&
+    dedos[3] == 0 &&
+    dedos[4] == 0
+  ){
+    return "B";
+  }
+
+  return "-";
+}
+
+// ─────────────────────────────────────
+// LETRA D
+// Vertical
+// ─────────────────────────────────────
+String detectarD(
+  int flex[],
+  float pitch,
+  float roll
+){
+
+  if(
+    dedos[0] != 1 ||
+    dedos[1] != 0 ||
+    dedos[2] != 1 ||
+    dedos[3] != 1 ||
+    dedos[4] != 1
+  ){
+    return "-";
+  }
+
+  float dPitch = pitch - basePitch;
+  float dRoll  = roll  - baseRoll;
+
+  // Mano vertical
+  if(
+    abs(dPitch) < 40 &&
+    abs(dRoll)  < 125
+  ){
+    return "D";
+  }
+
+  return "-";
+}
+
+// ─────────────────────────────────────
+// LETRA F
+// ─────────────────────────────────────
+String detectarF(){
+
+  if(
+    dedos[0] == 1 &&
+    dedos[1] == 1 &&
+    dedos[2] == 0 &&
+    dedos[3] == 0 &&
+    dedos[4] == 0
+  ){
+    return "F";
+  }
+
+  return "-";
+}
+
+// ─────────────────────────────────────
+// LETRA G
+// Horizontal
+// ─────────────────────────────────────
+String detectarG(
+  float pitch,
+  float roll
+){
+
+  if(
+    dedos[0] == 0 &&
+    dedos[1] == 0 &&
+    dedos[2] == 1 &&
+    dedos[3] == 1 &&
+    dedos[4] == 1
+  ){
+
+    float dPitch = pitch - basePitch;
+    float dRoll  = roll  - baseRoll;
+
+    // Mano horizontal
+    if(
+      dPitch < -65 &&
+      dRoll  < -120
+    ){
+      return "G";
+    }
+  }
+
+  return "-";
+}
+
+// ─────────────────────────────────────
+// LETRA H
+// Horizontal igual que G
+// ─────────────────────────────────────
+String detectarH(
+  float pitch,
+  float roll
+){
+
+  if(
+    dedos[0] == 0 &&
+    dedos[1] == 0 &&
+    dedos[2] == 0 &&
+    dedos[3] == 1 &&
+    dedos[4] == 1
+  ){
+
+    float dPitch = pitch - basePitch;
+    float dRoll  = roll  - baseRoll;
+
+    // Misma orientación que G
+    if(
+      dPitch < -60 &&
+      dRoll  < -120
+    ){
+      return "H";
+    }
+  }
+
+  return "-";
+}
+
+// ─────────────────────────────────────
+// LETRA I
+// ─────────────────────────────────────
+String detectarI(){
+
+  if(
+    dedos[0] == 1 &&
+    dedos[1] == 1 &&
+    dedos[2] == 1 &&
+    dedos[3] == 1 &&
+    dedos[4] == 0
+  ){
+    return "I";
+  }
+
+  return "-";
+}
+
+
+
+// ─────────────────────────────────────
+// LETRA M
+// ─────────────────────────────────────
+String detectarM(
+  float pitch,
+  float roll
+){
+
+  if(
+    dedos[0] == 1 &&
+    dedos[1] == 0 &&
+    dedos[2] == 0 &&
+    dedos[3] == 0 &&
+    dedos[4] == 1
+  ){
+
+    float dPitch = pitch - basePitch;
+    float dRoll  = roll  - baseRoll;
+
+    // inclinación real de tu mano
+    if(
+      dPitch > 0 &&
+      dRoll  < -20
+    ){
+      return "M";
+    }
+  }
+
+  return "-";
+}
+
+// ─────────────────────────────────────
+// LETRA N
+// ─────────────────────────────────────
+String detectarN(
+  float pitch,
+  float roll
+){
+
+  if(
+    dedos[0] == 1 &&
+    dedos[1] == 0 &&
+    dedos[2] == 0 &&
+    dedos[3] == 1 &&
+    dedos[4] == 1
+  ){
+
+    float dPitch = pitch - basePitch;
+    float dRoll  = roll  - baseRoll;
+
+    // inclinación real de tu mano
+    if(
+      dPitch > 0 &&
+      dRoll  < -20
+    ){
+      return "N";
+    }
+  }
+
+  return "-";
+}
+
+// ─────────────────────────────────────
+// LETRA P
+// ─────────────────────────────────────
+String detectarP(
+  float pitch,
+  float roll
+){
+
+  if(
+    dedos[0] == 0 &&
+    dedos[1] == 0 &&
+    dedos[2] == 0 &&
+    dedos[3] == 1 &&
+    dedos[4] == 1
+  ){
+
+    float dPitch = pitch - basePitch;
+    float dRoll  = roll  - baseRoll;
+
+    // orientación hacia abajo
+    if(
+      dPitch < -75 &&
+      dRoll  > 0
+    ){
+      return "P";
+    }
+  }
+
+  return "-";
+}
+
+// ─────────────────────────────────────
+// LETRA S
+// ─────────────────────────────────────
+String detectarS(){
+
+  if(
+    dedos[0] == 1 &&
+    dedos[1] == 1 &&
+    dedos[2] == 1 &&
+    dedos[3] == 1 &&
+    dedos[4] == 1
+  ){
+    return "S";
+  }
+
+  return "-";
+}
+
+// ─────────────────────────────────────
+// LETRA W
+// ─────────────────────────────────────
+String detectarW(){
+
+  if(
+    dedos[0] == 1 &&
+    dedos[1] == 0 &&
+    dedos[2] == 0 &&
+    dedos[3] == 0 &&
+    dedos[4] == 1
+  ){
+    return "W";
+  }
+
+  return "-";
+}
+
+// ─────────────────────────────────────
+// LETRA Y
+// ─────────────────────────────────────
+String detectarY(){
+
+  if(
+    dedos[0] == 0 &&
+    dedos[1] == 1 &&
+    dedos[2] == 1 &&
+    dedos[3] == 1 &&
+    dedos[4] == 0
+  ){
+    return "Y";
+  }
+
+  return "-";
+}
+
+// ─────────────────────────────────────
+// LETRA U
+// ─────────────────────────────────────
+String detectarU(){
+
+  if(
+    dedos[0] == 1 &&
+    dedos[1] == 0 &&
+    dedos[2] == 0 &&
+    dedos[3] == 1 &&
+    dedos[4] == 1
+  ){
+    return "U";
+  }
+
+  return "-";
+}
+
+// ─────────────────────────────────────
+// DETECCIÓN GENERAL
+// ─────────────────────────────────────
+String detectarLetra(
+  int flex[],
+  float pitch,
+  float roll
+){
+
+  // Mano abierta = nada
+  if(esNeutral(flex)){
+    return "-";
+  }
+
+  // ─────────────────
+  // A
+  // ─────────────────
+  String a = detectarA();
+  if(a == "A") return "A";
+
+  // ─────────────────
+  // B
+  // ─────────────────
+  String b = detectarB();
+  if(b == "B") return "B";
+
+
+
+  // ─────────────────
+  // D
+  // ─────────────────
+  String d = detectarD(
+               flex,
+               pitch,
+               roll
+             );
+  if(d == "D") return "D";
+
+  // ─────────────────
+  // F
+  // ─────────────────
+  String f = detectarF();
+  if(f == "F") return "F";
+
+  // ─────────────────
+  // G
+  // ─────────────────
+  String g = detectarG(
+               pitch,
+               roll
+             );
+  if(g == "G") return "G";
+
+  // ─────────────────
+  // H
+  // ─────────────────
+  String h = detectarH(
+               pitch,
+               roll
+             );
+  if(h == "H") return "H";
+
+  // ─────────────────
+  // I
+  // ─────────────────
+  String i = detectarI();
+  if(i == "I") return "I";
+
+  String m = detectarM(
+             pitch,
+             roll
+           );
+  if(m == "M") return "M";
+
+    String n = detectarN(
+             pitch,
+             roll
+           );
+  if(n == "N") return "N";
+
+  String s = detectarS();
+  if(s == "S") return "S";
+
+  String w = detectarW();
+  if(w == "W") return "W";
+
+  String y = detectarY();
+  if(y == "Y") return "Y";
+
+  // ─────────────────
+  // U
+  // ─────────────────
+  String u = detectarU();
+  if(u == "U") return "U";
+
+  return "-";
+}
+
+// ─────────────────────────────────────
+// SETUP
+// ─────────────────────────────────────
+void setup(){
+
+  Serial.begin(9600);
+
+  Wire.begin();
+
+  mpu.initialize();
+
+  Serial.println("\nCalibrando MPU...");
+  Serial.println("NO muevas la mano\n");
+
+  delay(3000);
+
+  long sumaPitch = 0;
+  long sumaRoll  = 0;
+
+  for(int i=0;i<100;i++){
+
+    int16_t ax, ay, az;
+
+    mpu.getAcceleration(&ax, &ay, &az);
+
+    float pitch, roll;
+
+    calcAngulos(
+      ax,
+      ay,
+      az,
+      pitch,
+      roll
+    );
+
+    sumaPitch += pitch;
+    sumaRoll  += roll;
+
+    delay(20);
+  }
+
+  basePitch = sumaPitch / 100.0;
+  baseRoll  = sumaRoll  / 100.0;
+
+  Serial.print("Base Pitch: ");
+  Serial.println(basePitch);
+
+  Serial.print("Base Roll: ");
+  Serial.println(baseRoll);
+
+  Serial.println("\nSistema listo\n");
+}
+
+// ─────────────────────────────────────
+// LOOP
+// ─────────────────────────────────────
+void loop(){
+
+  int pins[5] = {
+    FLEX_PULGAR,
+    FLEX_INDICE,
+    FLEX_MEDIO,
+    FLEX_ANULAR,
+    FLEX_MENIQUE
+  };
+
+  int flex[5];
+
+  // Leer flex
+  for(int i=0;i<5;i++){
+    flex[i] = leerPromedio(pins[i]);
+  }
+
+  clasificarDedos(flex);
+
+  // MPU
+  int16_t ax, ay, az;
+
+  mpu.getAcceleration(&ax, &ay, &az);
+
+  float pitch, roll;
+
+  calcAngulos(
+    ax,
+    ay,
+    az,
+    pitch,
+    roll
+  );
+
+  // DEBUG
+  Serial.print("Dedos: ");
+
+  for(int i=0;i<5;i++){
+    Serial.print(dedos[i]);
+    Serial.print(" ");
+  }
+
+  Serial.print("| Flex: ");
+
+  for(int i=0;i<5;i++){
+    Serial.print(flex[i]);
+    Serial.print(" ");
+  }
+
+  Serial.print("| P=");
+  Serial.print(pitch,1);
+
+  Serial.print(" R=");
+  Serial.println(roll,1);
+
+  // Detectar letra
+  String letra = detectarLetra(
+                   flex,
+                   pitch,
+                   roll
+                 );
+
+  if(letra == ultimaLetra){
+    contadorEstable++;
+  }
+  else{
+    contadorEstable = 0;
+  }
+
+  if(
+    contadorEstable >= ESTABILIDAD_REQUERIDA &&
+    letra != "-"
+  ){
+
+    Serial.print(">>> LETRA: ");
+    Serial.println(letra);
+
+    contadorEstable = 0;
+  }
+
+  ultimaLetra = letra;
+
+  delay(120);
+}

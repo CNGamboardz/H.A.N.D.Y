@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Handy - Traductor</title>
+  <link rel="icon" href="img/icon_handy.png">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="styletraductor.css">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Agregamos FontAwesome para los íconos del traductor -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body>
+
+  <header>
+
+    <div class="logo">
+      <img src="img/Logo_Handy.png" alt="Logo Handy" class="logo-img">
+      <span>Handy</span>
+    </div>
+
+    <nav>
+      <ul>
+        <li>
+          <a href="index.html">Inicio</a>
+        </li>
+        <li>
+          <a href="traductor.html" class="activo">Traductor</a>
+        </li>
+        <li>
+          <a href="abecedario.html">Abecedario</a>
+        </li>
+      </ul>
+    </nav>
+
+  </header>
+
+  <main class="main-traductor">
+    
+    <section class="traductor-container">
+      
+      <div class="traductor-header">
+        <h1>Traductor en Tiempo Real</h1>
+        <p>Visualiza aquí los datos recibidos desde el guante H.A.N.D.Y.</p>
+      </div>
+
+      <!-- Estado de conexión (Preparado para lógica con Arduino) -->
+      <div class="conexion-status">
+        <div class="status-indicator waiting" id="status-indicator"></div>
+        <span id="status-text">Esperando conexión con Arduino Mega2560...</span>
+      </div>
+
+      <div class="traductor-pantallas">
+        
+        <!-- Pantalla pequeña para mostrar el valor crudo detectado (ej. letra o sensor) -->
+        <div class="pantalla-box">
+          <div class="box-header">
+            <i class="fa-solid fa-hand-sparkles"></i>
+            <h3>Seña</h3>
+          </div>
+          <div class="box-content">
+            <!-- Este ID 'valor-arduino' muestra la letra -->
+            <div class="valor-display mini" id="valor-arduino">
+              <span class="placeholder">--</span>
+            </div>
+            
+            <!-- Contenedor dinámico para la imagen de la seña -->
+            <div class="sena-img-container" id="sena-img-container">
+              <i class="fa-solid fa-image placeholder-icon"></i>
+              <img id="imagen-sena" src="" alt="Seña">
+            </div>
+
+            <p class="box-info">Última lectura del Arduino</p>
+          </div>
+        </div>
+
+        <!-- Pantalla grande para la traducción a texto completo -->
+        <div class="pantalla-box principal">
+          <div class="box-header">
+            <i class="fa-solid fa-message"></i>
+            <h3>Traducción</h3>
+          </div>
+          <div class="box-content">
+            <!-- Este ID 'texto-traducido' es para la frase formada -->
+            <div class="texto-display" id="texto-traducido">
+              <span class="placeholder">Esperando datos para traducir...</span>
+            </div>
+            
+            <!-- Contenedor para mostrar la secuencia de imágenes -->
+            <div class="secuencia-imagenes" id="secuencia-imagenes"></div>
+            
+            <div class="box-actions">
+              <button class="btn-action" title="Borrar última letra" id="btn-backspace">
+                <i class="fa-solid fa-delete-left"></i>
+              </button>
+              <button class="btn-action" title="Borrar todo" id="btn-borrar">
+                <i class="fa-solid fa-trash"></i>
+              </button>
+              <button class="btn-action" title="Reproducir audio" id="btn-audio">
+                <i class="fa-solid fa-volume-high"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- Script para simular el comportamiento del guante -->
+  <script src="app.js"></script>
+
+</body>
+</html>
